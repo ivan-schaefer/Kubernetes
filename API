@@ -1,0 +1,22 @@
+cat inventory/local/artifacts/admin.conf
+cat /etc/kubernetes/admin.conf
+
+echo 'LS..' | base64 -d > /tmp/ca.crt
+echo 'LS..' | base64 -d > /tmp/client.crt
+echo 'LS..' | base64 -d > /tmp/client.key
+
+
+curl -D - -s --cacert /tmp/ca.crt --cert /tmp/client.crt --key /tmp/client.key https://146.190.227.14:6443/api
+
+
+kubectl run nginx-pod --image=docker.io/nginx:latest
+
+$ cat > patch.json <<EOF
+[ 
+ { 
+ "op": "add", "path": "/metadata/labels/api", "value": "true" 
+ } 
+]
+EOF
+
+curl --cacert /tmp/ca.crt --cert /tmp/client.crt --key /tmp/client.key --request PATCH --data "$(cat patch.json)" -H "Content-Type:application/json-patch+json" https://:6443/api/v1/namespaces/default/pods/nginx-pod
