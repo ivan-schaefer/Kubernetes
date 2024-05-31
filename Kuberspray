@@ -6,3 +6,11 @@ pip3 install -r requirements.txt
 cp -pr inventory/sample inventory/local
 declare -a IPS=()
 CONFIG_FILE=inventory/local/hosts.yaml python3 contrib/inventory_builder/inventory.py ${IPS[@]}
+
+ssh-keygen
+eval `ssh-agent -s`
+ssh-add
+ssh-copy-id user@
+
+sudo apt install ansible -y
+ansible-playbook -i inventory/local/hosts.yaml -u user -b -b cluster.yml
