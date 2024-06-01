@@ -1,0 +1,28 @@
+kubectl label node node1 'usercase=workload'
+kubectl edit node
+kubectl taint node node2 "dedicated=true:NoSchedule"
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dp-taint
+  labels:
+    usercase: workload
+spec:
+  selector:
+    matchLabels:
+      usercase: workload
+  template:
+    metadata:
+      labels:
+        usercase: workload
+    spec:
+      containers:
+      - name: memcached
+        image: memcached
+      tolerations:
+      - key: "dedicated"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
