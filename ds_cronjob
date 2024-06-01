@@ -41,4 +41,22 @@ spec:
           - name: alpine
             image: alpine
 	      		command: ["curl"]
-      			args: ["https://lk.rebrainme.com/kubernetes/report"]
+      			args: ["https://google.com"]
+
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: ping-google
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: alpine
+        command: ["ping"]
+        args: ["-c", "4", "8.8.8.8"]
