@@ -1,0 +1,31 @@
+# Create SA
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sa-dp
+  namespace: default
+
+# Create role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cr-dp
+rules:
+- apiGroups: [""]
+  resources: ["deployments"]
+  verbs: ["create"]
+
+# Bind role and SA
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test
+  namespace: foo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cr-dp
+subjects:
+- kind: ServiceAccount
+  name: sa-dp
+  namespace: default
