@@ -1,0 +1,60 @@
+wget https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+--kubelet-insecure-tls
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpine-dp
+  namespace: default
+  labels:
+    app: alpine-dp
+spec:
+  selector:
+    matchLabels:
+      app: alpine-dp
+  template:
+    metadata:
+      labels:
+        app: alpine-dp
+    spec:
+      containers:
+      - name: alpine
+        image: alpine
+        command: [ "bin/bash" ]
+        args: [ "-c", "dd if=/dev/zero of=/dev/null" ]
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-alpine
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: dp-taint
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      targetAverageUtilization: 20
+
+git clone https://github.com/kubernetes/autoscaler/
+cd autoscaler/
+git checkout vpa-release-1.0
+REGISTRY=registry.k8s.io/autoscaling TAG=1.0.0 ./hack/vpa-process-yamls.sh apply
+
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: vpa-alpine
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind:       Deployment
+    name:       alpine
+  updatePolicy:
+    updateMode: "Off"
