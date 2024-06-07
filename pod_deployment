@@ -1,7 +1,7 @@
 kubectl create namespace stage
 
-apiVersion: apps/v1
-kind: pod
+apiVersion: v1
+kind: Pod
 metadata:
   name: redis-kv
   labels:
@@ -10,8 +10,8 @@ spec:
   containers:
     - name: redis
       image: redis
-	  - name: redis-exporter
-	    image: bitnami/redis-exporter
+    - name: redis-exporter
+      image: bitnami/redis-exporter
 		
 
 kubectl create namespace dev
