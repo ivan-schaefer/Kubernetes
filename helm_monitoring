@@ -1,0 +1,92 @@
+### INSTALL STACK
+
+kubectl create ns monitoring
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add stable https://charts.helm.sh/stable
+helm repo update
+helm  pull prometheus-community/kube-prometheus-stack
+tar zxf kube-prometheus-stack-12.4.0.tgz
+cd kube-prometheus-stack
+helm -n monitoring upgrade --install prometheus-stack  ./
+kubectl get crd
+kubectl -n monitroing get svc
+kubectl -n monitroing get ing
+
+### ADAPTER
+
+helm pull prometheus-community/prometheus-adapter
+tar zxf prometheus-adapter-2.8.0.tgz
+helm -n monitoring upgrade --install prometheus-adapter -f values.yaml ./
+kubectl -n  monitoring get deploy prometheus-adapter
+kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1
+kubectl get --raw /apis/custom.metrics.k8s.io/v1beta1/namespaces/default/pods/*/http_requests | jq .
+
+### TEST
+  
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autoscale-dp
+  labels:
+    app: autoscale-dp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autoscale-dp
+  template:
+    metadata:
+      labels:
+        app: autoscale-dp
+    spec:
+      containers:
+      - image: luxas/autoscale-demo:v0.1.2
+        name: autoscale
+        ports:
+        - name: web
+          containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 5
+
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: autoscale-monitor
+  labels:
+    release: prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: autoscale-dp
+  podMetricsEndpoints:
+  - port: autoscale
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-autoscale
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: autoscale-dp
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Pods
+    pods:
+      metric:
+        name:  http_requests
+      target:
+        type: AverageValue
+        averageValue: 1000m
