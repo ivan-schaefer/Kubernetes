@@ -1,0 +1,51 @@
+kubectl get nodes --show-labels
+kubectl label nodes kube-v3-13-2-lnxqd usecase=job-node
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cron-test
+spec:
+  schedule: "*/10 * * * *"  # вот основное отличие
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: periodic-batch-job
+        spec:
+          nodeSelector:
+            usecase: "job-node"
+          restartPolicy: OnFailure
+          containers:
+            - name: main
+              image: busybox:1.36
+              command:
+              - ping google.com
+
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-test
+spec:
+  ttlSecondsAfterFinished: 100 # сколько контейнер будет висеть в статусе completed
+  backoffLimit: 4 # количество попыток, после которых job будет считаться failed
+  activeDeadlineSeconds: 60 # таймаут выполнения
+  template: # дальше спецификация пода
+    metadata:
+      labels:
+        app: ping-google
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+      - name: pre-ping
+        image: busybox:1.36
+        command: ["ping"]
+        args: ["8.8.8.8"]
+	  containers:
+      - name: pre-ping
+        image: busybox:1.36
+        command: ["ping"]
+        args: ["77.88.8.8"]
+

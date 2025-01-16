@@ -1,0 +1,260 @@
+Пример создания и подключения дисков
+Задача администраторов кластера — предоставить нам интеграции с хранилищами, но поскольку мы тут одни, придётся справляться самостоятельно. Развернём local-path provisioner от Rancher.
+
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+
+namespace/local-path-storage created
+serviceaccount/local-path-provisioner-service-account created
+role.rbac.authorization.k8s.io/local-path-provisioner-role created
+clusterrole.rbac.authorization.k8s.io/local-path-provisioner-role created
+rolebinding.rbac.authorization.k8s.io/local-path-provisioner-bind created
+clusterrolebinding.rbac.authorization.k8s.io/local-path-provisioner-bind created
+deployment.apps/local-path-provisioner created
+storageclass.storage.k8s.io/local-path created
+configmap/local-path-config created
+
+# вот наш создаватель дисков
+kubectl get storageclasses.storage.k8s.io local-path -o yaml
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: rancher.io/local-path
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+
+# у него даже есть какой-то конфиг
+kubectl -n local-path-storage get cm local-path-config -o yaml
+
+apiVersion: v1
+data:
+  config.json: |-
+    {
+            "nodePathMap":[
+            {
+                    "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                    "paths":["/opt/kube-volumes"]
+            }
+            ]
+    }
+  helperPod.yaml: |-
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: helper-pod
+    spec:
+      priorityClassName: system-node-critical
+      tolerations:
+        - key: node.kubernetes.io/disk-pressure
+          operator: Exists
+          effect: NoSchedule
+      containers:
+      - name: helper-pod
+        image: busybox
+        imagePullPolicy: IfNotPresent
+  setup: |-
+    #!/bin/sh
+    set -eu
+    mkdir -m 0777 -p "$VOL_DIR"
+  teardown: |-
+    #!/bin/sh
+    set -eu
+    rm -rf "$VOL_DIR"
+kind: ConfigMap
+metadata:
+  name: local-path-config
+  namespace: local-path-storage
+
+# создадим заявку на диск
+echo "
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi
+" | kubectl apply -f -
+
+persistentvolumeclaim/test-claim created
+
+kubectl get pvc
+NAME                 STATUS    VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+test-claim           Pending                                                                        local-path     22s
+# висит в pending,  возможно, что-то пошло не так
+
+kubectl describe pvc test-claim
+Name:          test-claim
+Namespace:     default
+StorageClass:  local-path
+Status:        Pending
+Volume:
+Labels:        <none>
+Annotations:   <none>
+Finalizers:    [kubernetes.io/pvc-protection]
+Capacity:
+Access Modes:
+VolumeMode:    Filesystem
+Used By:       <none>
+Events:
+  Type    Reason                Age               From                         Message
+  ----    ------                ----              ----                         -------
+  Normal  WaitForFirstConsumer  5s (x5 over 60s)  persistentvolume-controller  waiting for first consumer to be created before binding
+# нет, провижионер работает таким образом, что, пока pvc никто не подключит, он не собирается делать нам диск
+
+
+# задеплоим наш под
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-persistent-deployment
+  labels:
+    app: guestbook
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: guestbook
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        tier: frontend
+        app: guestbook
+    spec:
+      containers:
+      - name: persistent-container
+        image: alpine:3.19
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        volumeMounts:
+          - mountPath: "/mnt/my-storage"
+            name: my-volume
+      volumes:
+        - name: my-volume
+          persistentVolumeClaim:
+            claimName: my-storage
+
+kubectl apply -f deployment-pvc.yaml
+deployment.apps/frontend created
+
+kubectl get pvc
+NAME                 STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+test-claim           Bound    pvc-71b67c57-d98a-4bd6-8cd7-57270baf9f0c   8Gi        RWO            local-path     7m32s  # примонтировался
+
+kubectl get pods -o wide
+NAME                          READY   STATUS    RESTARTS      AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+frontend-5fc6c944d9-75z5w     1/1     Running   0             2m32s   10.233.77.94     k8s-3   <none>           <none> # но есть один нюанс... все на одной ноде
+frontend-5fc6c944d9-85sb9     1/1     Running   0             2m32s   10.233.77.81     k8s-3   <none>           <none>
+frontend-5fc6c944d9-x5z8m     1/1     Running   0             2m32s   10.233.77.84     k8s-3   <none>           <none>
+
+kubectl scale deployment frontend --replicas 10 # давайте добавим, может быть, теория вероятности была не на нашей стороне
+deployment.apps/frontend scaled
+
+kubectl get pods -o wide
+NAME                          READY   STATUS    RESTARTS      AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+frontend-5fc6c944d9-285vm     1/1     Running   0             9s      10.233.77.70     k8s-3   <none>           <none> # увы , все будем тусоваться на одной ноде, т.к. диск привязан к ней, и он в режиме Once
+frontend-5fc6c944d9-75z5w     1/1     Running   0             3m30s   10.233.77.94     k8s-3   <none>           <none>
+frontend-5fc6c944d9-85sb9     1/1     Running   0             3m30s   10.233.77.81     k8s-3   <none>           <none>
+frontend-5fc6c944d9-cjwtq     1/1     Running   0             9s      10.233.77.124    k8s-3   <none>           <none>
+frontend-5fc6c944d9-nglc5     1/1     Running   0             9s      10.233.77.89     k8s-3   <none>           <none>
+frontend-5fc6c944d9-npsxb     1/1     Running   0             9s      10.233.77.102    k8s-3   <none>           <none>
+frontend-5fc6c944d9-qwswv     1/1     Running   0             9s      10.233.77.79     k8s-3   <none>           <none>
+frontend-5fc6c944d9-rsn8t     1/1     Running   0             9s      10.233.77.67     k8s-3   <none>           <none>
+frontend-5fc6c944d9-x4vqc     1/1     Running   0             9s      10.233.77.99     k8s-3   <none>           <none>
+frontend-5fc6c944d9-x5z8m     1/1     Running   0             3m30s   10.233.77.84     k8s-3   <none>           <none>
+
+# создадим файл
+kubectl exec -it my-persistent-deployment-865d967cf4-p5jjf -- /bin/sh
+/ # echo 'persistent-content'> /mnt/my-storage/pvc.txt
+/ exit
+
+# и проверим из другого пода
+kubectl exec -it my-persistent-deployment-865d967cf4-hhkrc -- cat /mnt/my-storage/pvc.txt
+storage is here
+
+# пересоздадим deployment
+kubectl delete -f  deployment-pvc.yaml && kubectl apply -f  deployment-pvc.yaml
+
+deployment.apps "frontend" deleted
+deployment.apps/frontend created
+# проверим с нового пода, всё на месте
+kubectl exec -it frontend-5fc6c944d9-zqdr4 -- cat /mystor/file.txt
+storage is here
+
+# удалим pvc
+
+kubectl delete pvc test-claim
+persistentvolumeclaim "test-claim" deleted # и на этом месте консоль зависает
+
+# из второго окна посмотрим, что происходит
+
+kubectl get pvc
+NAME                 STATUS        VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+test-claim           Terminating   pvc-71b67c57-d98a-4bd6-8cd7-57270baf9f0c   8Gi        RWO            local-path     26m
+
+# чтобы «отпустило», приходится удалять деплоймент
+
+kubectl delete deployments.apps frontend
+deployment.apps "frontend" deleted
+
+# создадим деплоймент заново
+kubectl apply -f deployment-pvc.yaml
+deployment.apps/frontend created
+
+kubectl get pods
+NAME                          READY   STATUS    RESTARTS      AGE
+frontend-5fc6c944d9-cd8rg     0/1     Pending   0             24s
+frontend-5fc6c944d9-jw8km     0/1     Pending   0             24s
+frontend-5fc6c944d9-z49pm     0/1     Pending   0             24s
+
+kubectl describe pod frontend-5fc6c944d9-z49pm
+#.....
+Events:
+  Type     Reason            Age   From               Message
+  ----     ------            ----  ----               -------
+  Warning  FailedScheduling  41s   default-scheduler  0/3 nodes are available: persistentvolumeclaim "test-claim" not found. preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling..  # если вы дисков на даёте, мы не работаем
+#.....
+# пересоздадим pvc
+echo "
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-claim
+spec:
+  accessModes:
+    - ReadWriteOnce # локальные диски и папки, поддерживают только Once
+  volumeMode: Filesystem # оставляем по умолчанию
+  resources:
+    requests:
+      storage: 8Gi # сколько выделить
+  storageClassName: local-path # у кого запрашиваем
+" | kubectl apply -f -
+
+persistentvolumeclaim/test-claim created
+
+kubectl get pods -o wide
+NAME                          READY   STATUS    RESTARTS      AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+frontend-5fc6c944d9-cd8rg     1/1     Running   0             4m58s   10.233.77.126    k8s-3   <none>           <none> # ну полюбилась им третья нода, что уж тут поделаешь
+frontend-5fc6c944d9-jw8km     1/1     Running   0             4m58s   10.233.77.127    k8s-3   <none>           <none>
+frontend-5fc6c944d9-z49pm     1/1     Running   0             4m58s   10.233.77.78     k8s-3   <none>           <none>
+
+# проверим наш диск
+kubectl exec -it frontend-5fc6c944d9-cd8rg -- cat /mystor/file.txt
+cat: can't open '/mystor/file.txt': No such file or directory # увы, данных больше нет, т.к. мы пересоздали PVC, но вы держитесь
+command terminated with exit code 1
+
+
+
+

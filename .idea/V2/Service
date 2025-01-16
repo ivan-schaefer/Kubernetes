@@ -1,0 +1,76 @@
+piVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpd-dp
+  labels:
+    app: guestbook
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: guestbook
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        tier: frontend
+        app: guestbook
+    spec:
+      containers:
+      - name: httpd
+        image: httpd:latest
+        ports:
+        - name: http
+          containerPort: 80
+
+
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: http-svc-int
+spec:
+  type: ClusterIP
+  selector:
+    app: guestbook
+    tier: frontend
+  ports:
+    - protocol: TCP
+      name: http
+      port: 80
+      targetPort: http
+
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: http-svc-nodeport
+spec:
+  type: NodePort
+  selector:
+    app: guestbook
+    tier: frontend
+  ports:
+    - protocol: TCP
+      name: http
+      port: 80
+      targetPort: http
+      nodePort: 32501
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: http-svc-ext
+spec:
+  type: LoadBalancer
+  selector:
+    app: guestbook
+    tier: frontend
+  ports:
+    - protocol: TCP
+      name: http
+      port: 80
+      targetPort: http

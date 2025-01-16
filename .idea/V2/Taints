@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  labels:
+    run: mypod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      run: mypod
+  template:
+    metadata:
+      labels:
+        run: mypod
+    spec:
+      nodeName: kube-v3-6-3-tnnrx
+      containers:
+      - image: nginx:latest
+        name: mypod
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+    status:
+      qosClass: Guaranteed
+
+kubectl uncordon kube-v3-6-3-tnnrx
+
+kubectl describe node kube-v3-6-3-tnnrx
+kubectl describe node kube-v3-6-2-owlou
+
+kubectl taint nodes kube-v3-6-3-tnnrx mytaint=boberkurwa:NoSchedule-

@@ -1,0 +1,224 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dep-main
+  labels:
+    app: dep-main
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dep-main
+  template:
+    metadata:
+      labels:
+        app: dep-main
+    spec:
+      containers:
+      - name: dep-main
+        image: nginx:latest
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-dep-main
+  labels:
+    app: dep-main
+spec:
+  ports:
+  - port: 8080
+    targetPort: 80
+    protocol: TCP
+    name: http
+  - port: 8443
+    targetPort: 443
+    protocol: TCP
+    name: https
+  selector:
+    app: dep-main
+
+
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dep-canary
+  labels:
+    app: dep-canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dep-canary
+  template:
+    metadata:
+      labels:
+        app: dep-canary
+    spec:
+      containers:
+      - name: dep-canary
+        image: nginx:latest
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: svc-dep-canary
+  labels:
+    app: dep-canary
+spec:
+  ports:
+  - port: 9090
+    targetPort: 80
+    protocol: TCP
+    name: http
+  - port: 9443
+    targetPort: 443
+    protocol: TCP
+    name: https
+  selector:
+    app: dep-canary
+
+
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingr-main
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: main-10.96.248.179.nip.io
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: svc-dep-main
+            port:
+              number: 8080
+
+
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingr-canary
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: canary-10.106.172.232.nip.io
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: svc-dep-canary
+            port:
+              number: 9090
+
+
+sudo apt install apache2-utils
+htpasswd -c auth foo
+kubectl create secret generic basic-auth-secret --from-file=auth
+kubectl get secret basic-auth-secret -o yaml
+
+
+
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingr-main
+  annotations:
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - user'
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: main-51.250.41.193.nip.io
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: svc-dep-main
+            port:
+              number: 8080
+
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingr-canary
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "70"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: canary-51.250.41.193.nip.io
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: svc-dep-canary
+            port:
+              number: 9090
+
+
+
+curl -v http://51.250.41.193/ -H 'Host: main-51.250.41.193.nip.io' -u 'user:Timezone123'

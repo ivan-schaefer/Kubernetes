@@ -1,0 +1,95 @@
+ubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+
+
+kubectl get nodes --show-labels
+kubectl label nodes <your-node-name> ingress=true
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: my-special-service
+  labels:
+    ingress=true
+spec:
+  selector:
+    matchLabels:
+      name: ingress=true
+  template:
+    metadata:
+      labels:
+        name: fingress=true
+    spec:
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: fluentd-elasticsearch
+        image: quay.io/fluentd_elasticsearch/fluentd:v2.5.2
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+      terminationGracePeriodSeconds: 30
+      volumes: # пример, как создать просто volume (не PV), смонтировав каталог с хоста
+      - name: varlog
+        hostPath:
+          path: /var/log
+
+kubectl apply -f daemonset.yaml
+daemonset.apps/fluentd-elasticsearch created
+
+# посмотрим статусы
+kubectl describe daemonsets.apps
+Name:           fluentd-elasticsearch
+Selector:       name=fluentd-elasticsearch
+Node-Selector:  <none>
+Labels:         k8s-app=fluentd-logging
+Annotations:    deprecated.daemonset.template.generation: 1
+Desired Number of Nodes Scheduled: 3 # вот тут ноды подсчитали
+Current Number of Nodes Scheduled: 3
+Number of Nodes Scheduled with Up-to-date Pods: 3
+Number of Nodes Scheduled with Available Pods: 3
+Number of Nodes Misscheduled: 0
+Pods Status:  3 Running / 0 Waiting / 0 Succeeded / 0 Failed
+Pod Template:
+  Labels:  name=fluentd-elasticsearch
+  Containers:
+   fluentd-elasticsearch:
+    Image:      quay.io/fluentd_elasticsearch/fluentd:v2.5.2
+    Port:       <none>
+    Host Port:  <none>
+    Limits:
+      memory:  200Mi
+    Requests:
+      cpu:        100m
+      memory:     200Mi
+    Environment:  <none>
+    Mounts:
+      /var/log from varlog (rw)
+  Volumes:
+   varlog:
+    Type:          HostPath (bare host directory volume)
+    Path:          /var/log
+    HostPathType:
+Events: # информация, что нам создали поды
+  Type    Reason            Age   From                  Message
+  ----    ------            ----  ----                  -------
+  Normal  SuccessfulCreate  36s   daemonset-controller  Created pod: fluentd-elasticsearch-dvksw
+  Normal  SuccessfulCreate  36s   daemonset-controller  Created pod: fluentd-elasticsearch-l6l2h
+  Normal  SuccessfulCreate  36s   daemonset-controller  Created pod: fluentd-elasticsearch-6cm22
+
+# на всякий случай проверим, что они на разных нодах
+kubectl get pods -o wide
+NAME                          READY   STATUS    RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+fluentd-elasticsearch-6cm22   1/1     Running   0          3m52s   10.233.114.140   k8s-1   <none>           <none>
+fluentd-elasticsearch-dvksw   1/1     Running   0          3m52s   10.233.77.91     k8s-3   <none>           <none>
+fluentd-elasticsearch-l6l2h   1/1     Running   0          3m52s   10.233.81.237    k8s-2   <none>           <none>

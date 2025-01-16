@@ -1,0 +1,139 @@
+kubectl create namespace test-rbac
+
+USERS & SA
+
+### SA
+kubectl create sa test-rbac -o yaml --dry-run=client
+
+kubectl create sa test-rbac -o yaml --dry-run=client | kubectl apply -f -
+
+kubectl create sa test-user -n test-rbac
+kubectl create sa test-admin -n test-rbac
+
+### TOKEN
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-admin-token
+  namespace: test-rbac
+  annotations:
+    kubernetes.io/service-account.name: test-admin
+type: kubernetes.io/service-account-token
+EOF
+
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-user-token
+  namespace: test-rbac
+  annotations:
+    kubernetes.io/service-account.name: test-user
+type: kubernetes.io/service-account-token
+EOF
+
+kubectl get secret
+kubectl get secret -n test-rbac
+
+kubectl get secret sa-test-token -o yaml
+
+# DECODE TOKEN
+echo -n "token" | base64 -d
+
+# jsonpath
+kubectl get secret sa-test-token -o jsonpath='{.data.token}' | base64 -d
+
+### ROLES
+kubectl create role test-role --resource serviceaccounts --namespace test-rbac --verb get,list,watch --dry-run=client -o yaml
+
+### BINDING
+kubectl create rolebinding test-binding --role test-role --serviceaccount=test-rbac:test-user --dry-run=client -o yaml
+
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  creationTimestamp: null
+  name: test-role
+  namespace: test-rbac
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - rolebindings
+  verbs:
+  - get
+  - list
+  - watch
+
+  Checking rights
+не пройден
+
+Checking rights
+
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  creationTimestamp: null
+  name: test-binding
+  namespace: test-rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: test-role
+subjects:
+- kind: ServiceAccount
+  name: test-user
+  namespace: test-rbac
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  creationTimestamp: null
+  name: admin-binding
+  namespace:
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: test-admin
+  namespace: test-rbac
+
+
+
+
+
+
+sudo cat ~/.kube/config
+
+
+- context:
+    cluster: ""
+    namespace: test-rbac
+    user: test-user
+  name: sa-context
