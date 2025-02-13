@@ -1,0 +1,8 @@
+git clone https://github.com/kubernetes-sigs/kubespray -b v2.24.1
+sudo apt update
+sudo apt install python3-pip
+pip install -r requirements.txt
+ssh-keygen
+ssh-copy-id user@node2
+export PATH=$PATH:~/.local/bin
+sudo ansible-playbook -i /home/user/kubespray/inventory/myinventory/inventory.ini cluster.yml -u user -b --extra-vars "@/home/user/kubespray/inventory/myinventory/vars.yaml"
