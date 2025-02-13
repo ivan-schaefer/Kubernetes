@@ -1,0 +1,131 @@
+mkdir -p /etc/ssl/etcd/ssl
+mkdir -p /var/lib/etcd
+cp ca*.pem /etc/ssl/etcd/ssl
+mv client3*.pem /etc/ssl/etcd/ssl
+mv member3*.pem /etc/ssl/etcd/ssl
+mv server3*.pem /etc/ssl/etcd/ssl
+chown -R etcd:etcd /etc/ssl/etcd
+chown -R etcd:etcd /var/lib/etcd
+chmod -R 750 /etc/ssl/etcd
+chmod -R 750 /var/lib/etcd
+
+
+{
+     "signing": {
+         "default": {
+             "expiry": "999999h"
+         },
+         "profiles": {
+             "server": { 
+                 "expiry": "999999h",
+                 "usages": [
+                     "signing",
+                     "key encipherment",
+                     "server auth", 
+                     "client auth"  
+                 ]
+             },
+             "client": {
+                 "expiry": "999999h",
+                 "usages": [
+                     "signing",
+                     "key encipherment",
+                     "client auth"
+                 ]
+             },
+             "member": { 
+                 "expiry": "999999h",
+                 "usages": [
+                     "signing",
+                     "key encipherment",
+                     "server auth",
+                     "client auth"
+                 ]
+             }
+         }
+     }
+ }
+ 
+{
+     "CN": "etcd-member-node1", 
+     "hosts": [
+         "localhost",
+         "node1",
+         "etcd.kube-system.svc.cluster.local", 
+         "etcd.kube-system.svc",
+         "etcd.kube-system",
+         "etcd",
+         "10.128.0.30",
+         "127.0.0.1"
+     ],
+     "key": {
+         "algo": "ecdsa",
+         "size": 256
+     }
+ }
+
+[Unit]
+Description=etcd
+After=network.target
+
+[Service]
+Type=notify
+User=etcd
+EnvironmentFile=/etc/etcd.env
+ExecStart=/usr/local/bin/etcd
+NotifyAccess=all
+Restart=always
+RestartSec=10s
+LimitNOFILE=40000
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+ETCD_DATA_DIR=/var/lib/etcd
+ETCD_ADVERTISE_CLIENT_URLS=https://10.128.0.36:2379
+ETCD_INITIAL_ADVERTISE_PEER_URLS=https://10.128.0.36:2380
+ETCD_INITIAL_CLUSTER_STATE=new
+ETCD_METRICS=basic
+ETCD_LISTEN_CLIENT_URLS=https://10.128.0.36:2379,https://127.0.0.1:2379
+ETCD_ELECTION_TIMEOUT=5000
+ETCD_HEARTBEAT_INTERVAL=250
+ETCD_INITIAL_CLUSTER_TOKEN=k8s_etcd
+ETCD_LISTEN_PEER_URLS=https://10.128.0.36:2380
+# будет меняться имя ноды в кластере
+ETCD_NAME=kube-v3a-2-3-xiwjm
+ETCD_PROXY=off
+# список всех членов кластера
+ETCD_INITIAL_CLUSTER=node1=https://10.128.0.30:2380,node2=https://10.128.0.15:2380,node3=https://10.128.0.30:2380:2380
+ETCD_AUTO_COMPACTION_RETENTION=8
+ETCD_SNAPSHOT_COUNT=10000
+# Flannel need etcd v2 API
+ETCD_ENABLE_V2=true
+
+# TLS settings
+ETCD_TRUSTED_CA_FILE=/etc/ssl/etcd/ssl/ca.pem
+ETCD_CERT_FILE=/etc/ssl/etcd/ssl/server3.pem
+ETCD_KEY_FILE=/etc/ssl/etcd/ssl/server3-key.pem
+ETCD_CLIENT_CERT_AUTH=true
+
+ETCD_PEER_TRUSTED_CA_FILE=/etc/ssl/etcd/ssl/ca.pem
+ETCD_PEER_CERT_FILE=/etc/ssl/etcd/ssl/member3.pem
+ETCD_PEER_KEY_FILE=/etc/ssl/etcd/ssl/member3-key.pem
+ETCD_PEER_CLIENT_CERT_AUTH=True
+
+# CLI settings
+ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
+ETCDCTL_CACERT=/etc/ssl/etcd/ssl/ca.pem
+ETCDCTL_KEY=/etc/ssl/etcd/ssl/client3-key.pem
+ETCDCTL_CERT=/etc/ssl/etcd/ssl/client3.pem
+
+# ETCD 3.5.x issue
+# https://groups.google.com/a/kubernetes.io/g/dev/c/B7gJs88XtQc/m/rSgNOzV2BwAJ?utm_medium=email&utm_source=footer
+ETCD_EXPERIMENTAL_INITIAL_CORRUPT_CHECK=True
+
+etcdctl --cacert="/etc/ssl/etcd/ssl/ca.pem" --cert="/etc/ssl/etcd/ssl/client3.pem" --key="/etc/ssl/etcd/ssl/client3-key.pem" --endpoints="https://10.128.0.30:2379,https://10.128.0.15:2379,https://10.128.0.36:2379" member list
+
+etcdctl --cacert="/etc/ssl/etcd/ssl/ca.pem" --cert="/etc/ssl/etcd/ssl/client3.pem" --key="/etc/ssl/etcd/ssl/client3-key.pem" --endpoints="https://10.128.0.30:2379" get message
+
+etcdctl snapshot restore my-snap --data-dir=/var/lib/etcd --name=node2 --initial-advertise-peer-urls=https://10.128.0.15:2380  --initial-cluster=node1=https://10.128.0.30:2380,node2=https://10.128.0.15:2380,node3=https://10.128.0.36:2380
