@@ -1,0 +1,108 @@
+Backup 
+
+mkdir backup
+cp -r /etc/kubernetes/ backup/
+
+-------
+RESOURSE
+
+for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl get all -n "$ns" -o yaml > "backup/$ns-all.yaml"
+  kubectl get configmaps,secrets -n "$ns" -o yaml > "backup/$ns-configs.yaml"
+done
+--------
+HELM
+helm list --all-namespaces
+helm get all my-release -n my-namespace > /backup/helm-my-release.yaml
+--------
+PV
+rsync -avz /mnt/pv-data /backup/pv-backup/
+--------
+Backup
+kubectl apply -f /backup/manifests/all-resources.yaml
+helm upgrade --install my-release -f /backup/helm-my-release.yaml
+velero restore create --from-backup full-backup
+
+MINOR UPDATE
+MASTER NODE
+
+kubectl get nodes -o wide
+
+kubectl drain node3
+
+WORKER NODE
+apt update
+
+apt-cache madison kubeadm
+
+apt-mark unhold kubeadm && \
+apt-get update && sudo apt-get install -y kubeadm='1.29.0-*' && \
+apt-mark hold kubeadm
+
+kubeadm upgrade node
+
+apt-mark unhold kubelet kubectl && \
+apt-get update && sudo apt-get install -y kubelet='1.28.9-*' kubectl='1.28.9-*' && \
+apt-mark hold kubelet kubectl
+
+systemctl daemon-reload
+systemctl restart kubelet
+
+kubectl uncordon node3
+
+MASTER NODE
+
+apt update -y
+apt-mark unhold kubeadm && \
+apt-get update && sudo apt-get install -y kubeadm='1.28.9-*' && \
+apt-mark hold kubeadm
+
+kubectl drain node1 --ignore-daemonsets
+
+kubeadm upgrade plan
+
+kubeadm upgrade apply v1.28.9
+
+
+apt-mark unhold kubelet kubectl && \
+apt-get update && sudo apt-get install -y kubelet='1.28.9-*' kubectl='1.28.9-*' && \
+apt-mark hold kubelet kubectl
+
+systemctl daemon-reload
+systemctl restart kubelet
+
+kubectl uncordon node1
+
+kubectl get nodes
+
+
+
+MAJOR UPDATE
+kubectl get nodes -o wide 
+
+kubectl drain node2 / kubectl drain node1 --ignore-daemonsets (FROM MASTER)
+
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+apt update
+apt-cache madison kubeadm
+
+apt-mark unhold kubeadm && \
+apt-get update && sudo apt-get install -y kubeadm='1.30.0-*' && \
+apt-mark hold kubeadm
+
+
+kubeadm upgrade node (worker) 
+kubeadm upgrade plan (master)
+kubeadm upgrade apply v1.30.0 (master)
+
+apt-mark unhold kubelet kubectl && \
+apt-get update && sudo apt-get install -y kubelet='1.30.0-*' kubectl='1.30.0-*' && \
+apt-mark hold kubelet kubectl
+systemctl daemon-reload
+systemctl restart kubelet
+
+kubectl uncordon NODE
+
