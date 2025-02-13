@@ -1,0 +1,6 @@
+sudo crictl ps -a
+crictl logs
+kubeadm certs  check-expiration
+kubeadm certs renew all
+kubeadm init phase certs apiserver
+crictl rm .
