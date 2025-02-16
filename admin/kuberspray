@@ -1,0 +1,69 @@
+git clone https://github.com/kubernetes-sigs/kubespray -b v2.24.1
+sudo apt update
+sudo apt install python3-pip
+pip install -r requirements.txt
+ssh-keygen
+ssh-copy-id user@node2
+export PATH=$PATH:~/.local/bin
+cp -r sample myinventory
+
+ansible-playbook -i /home/user/kubespray/inventory/myinventory/inventory.ini cluster.yml -u user -b --extra-vars "@/home/user/kubespray/inventory/myinventory/vars.yaml"
+mkdir -p $HOME/.kube
+cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+
+
+[all]
+node1 ansible_connection=local
+node2 ansible_host=
+node3 ansible_host=
+
+[kube_control_plane]
+node1
+node2
+node3
+
+[etcd]
+node1
+node2
+node3
+
+[kube_node]
+node1
+node2
+node3
+
+
+[calico_rr]
+
+[k8s_cluster:children]
+kube_control_plane
+kube_node
+calico_rr
+
+
+
+cd
+metrics_server_enabled: true
+kube_proxy_strict_arp: true
+kubernetes_audit: true
+local_path_provisioner_enabled: true
+kube_encrypt_secret_data: true
+kube_version: v1.29.5
+
+
+
+kube_vip_enabled: true
+apiserver_loadbalancer_domain_name: ""
+kube_vip_address: 
+loadbalancer_apiserver:
+  address: "{{ kube_vip_address }}"
+  port: 6443
+
+kube_vip_controlplane_enabled: true
+kube_vip_lb_enable: true
+kube_vip_interface: ens160
+kube_vip_arp_enabled: true
+
+
+sudo apt update && sudo apt -y install haproxy
+
