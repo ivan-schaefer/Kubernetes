@@ -1,0 +1,105 @@
+kubectl create ns monitoring
+helm upgrade --install ingress-nginx ingress-nginx   --repo https://kubernetes.github.io/ingress-nginx   --namespace ingress-nginx --create-namespace
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+kubectl -n ingress-nginx get deployments,svc
+130.193.57.33
+helm  pull prometheus-community/kube-prometheus-stack --untar
+
+
+vim values-override.yaml
+
+helm -n monitoring upgrade --install prometheus-stack -f values-override.yaml .
+
+kubectl get crd | grep mon
+
+kubectl -n monitoring get all
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis-pod
+  namespace: default
+  labels:
+    app: redis
+spec:
+  containers:
+    - name: redis
+      image: redis:latest
+      ports:
+        - containerPort: 6379
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+    - name: redis-exporter
+      image: bitnami/redis-exporter:latest
+      ports:
+        - containerPort: 9121
+      env:
+        - name: REDIS_ADDR
+          value: "redis://redis:6379"
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+        limits:
+          cpu: "250m"
+          memory: "128Mi"
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-exporter
+  namespace: default
+  labels:
+    app: redis
+spec:
+  ports:
+    - name: metrics
+      port: 9121
+      targetPort: 9121
+  selector:
+    app: redis
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-service-monitor
+  namespace: default
+  labels:
+    release: prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  endpoints:
+    - port: "metrics"
+      interval: 15s
+      path: "/metrics"
+
+kubectl get ServiceMonitor
+
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor 
+metadata:
+  name: redis-monitor
+  namespace: default
+  labels:
+    release: prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: redis 
+  podMetricsEndpoints:
+    - port: "9121"
+      interval: 15s
+      path: "/metrics"
+  
+kubectl get podmonitors
+
+kubectl port-forward redis-pod 9121 -n default
+kubectl port-forward svc/prometheus-stack-kube-prom-prometheus -n monitoring 9090
