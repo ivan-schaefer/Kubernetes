@@ -1,0 +1,156 @@
+
+mkdir -p /opt/nfs
+apt install nfs-kernel-server -y
+echo "/opt/nfs        *(rw,sync,no_root_squash,no_subtree_check)"  >> /etc/exports
+systemctl enable nfs-kernel-server.service --now
+systemctl reload nfs-kernel-server.service
+
+showmount -e 127.0.0.1
+Export list for 127.0.0.1:
+/opt/nfs *
+
+# на всех нодах, которые могут монтировать диск, необходимо установить пакет nfs-common
+apt install -y nfs-common
+
+helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+
+helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner  --set nfs.server=192.168.0.202 --set nfs.path=/opt/nfs -n nfs-provisioner --create-namespace
+
+
+kubectl -n nfs-provisioner get pods,storageclasses
+
+helm repo add elastic https://helm.elastic.co
+helm install elastic-operator elastic/eck-operator -n elastic-system --create-namespace --set config.container-registry=docker.io
+
+git clone https://github.com/elastic/cloud-on-k8s
+helm install -n elastic-system --create-namespace elastic-operator --set config.container-registry=docker.io ./cloud-on-k8s/deploy/eck-operator
+
+templates/statefulset.yaml
+docker.elastic.co/eck/eck-operator:2.14.0-bc2-amd64
+
+
+helm upgrade --install -n elastic-system --create-namespace elastic-operator \
+--set config.containerRegistry=docker.io \
+--set config.containerRepository=elastic \
+--set image.repository=docker.io/elastic/eck-operator \
+--set image.tag=2.14.0 \
+./cloud-on-k8s/deploy/eck-operator
+
+
+kubectl -n elastic-system get pods
+cd cloud-on-k8s/deploy/eck-stack
+
+eck-elasticsearch:
+  fullnameOverride: elastic
+  version: 8.13.4
+  nodeSets:
+  - name: default
+    count: 1
+    config:
+      node.store.allow_mmap: false
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+        storageClassName: nfs-client
+
+eck-kibana:
+  fullnameOverride: kibana
+  version: 8.13.4
+  spec:
+    count: 1
+    elasticsearchRef:
+      name: elastic
+      namespace: logging
+    http:
+      service:
+        spec:
+          type: ClusterIP
+    podTemplate:
+      spec:
+        containers:
+        - name: kibana
+          env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=2048"
+          resources:
+            requests:
+              memory: 1Gi
+              cpu: 0.5
+            limits:
+              memory: 2.5Gi
+              cpu: 2
+			  
+helm upgrade --install -n logging --create-namespace -f values-override.yaml eck .    
+
+kubectl -n logging get pods
+
+kubectl get pv
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kibana
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: kibana.192.168.0.150.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kibana-kb-http
+                port:
+                  number: 5601
+				  
+kubectl -n logging get secret elastic-es-elastic-user  -o=jsonpath='{.data.elastic}' | base64 --decode; echo
+
+
+# values-override.yaml
+
+config:
+  outputs: |
+    [OUTPUT]
+        Name es
+        Match kube.*
+        Host elastic-es-http.logging.svc.cluster.local      # адрес эластика
+        Port 9200 # порт 
+        tls On  # он работает по https
+        tls.verify False
+        HTTP_User elastic 
+        HTTP_Passwd 
+        Suppress_Type_Name On
+        Logstash_Format On
+        Retry_Limit False
+
+    [OUTPUT]
+        Name es
+        Match host.*
+        Host elastic-es-http.logging.svc.cluster.local
+        Port 9200
+        tls On
+        tls.verify False
+        HTTP_User elastic
+        HTTP_Passwd W8m8iDffObb5DS042716QV0O
+        Suppress_Type_Name On
+        Logstash_Format On
+        Logstash_Prefix node
+        Retry_Limit False
+
+
+helm repo add fluent https://fluent.github.io/helm-charts
+helm upgrade --install -n logging fluent fluent/fluent-bit -f fl.yaml
+
+kubectl -n logging get pods
+
+
+https://kibana.192.168.0.150.nip.io
