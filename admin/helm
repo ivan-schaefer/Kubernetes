@@ -1,0 +1,66 @@
+
+curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+sudo apt-get install apt-transport-https --yes
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+sudo apt-get update
+sudo apt-get install helm
+
+helm upgrade --install ingress-nginx ingress-nginx   --repo https://kubernetes.github.io/ingress-nginx   --namespace ingress-nginx --create-namespace
+
+kubectl -n ingress-nginx get deployments,svc
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-dp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+
+apiVersion: v1
+kind: Service
+metadata:
+ name: svc-internal
+spec:
+ type: ClusterIP
+ selector: 
+   app.kubernetes.io/name: nginx
+ ports:
+ - port: 80
+   targetPort: 80
+   
+ 
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-ingress 
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: dp.130.193.57.0.nip.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: svc-internal
+            port:
+              number: 80
+			  
+htpasswd -c auth user
+
+curl -D - -s -o /dev/null -H 'Host: dp.158.160.141.29.nip.io ' http://158.160.141.29/
