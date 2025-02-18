@@ -1,0 +1,79 @@
+
+curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+sudo apt-get install apt-transport-https --yes
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+sudo apt-get update
+sudo apt-get install helm
+
+helm repo add jetstack https://charts.jetstack.io --force-update
+
+helm repo update
+
+helm search repo jetstack
+
+helm upgrade --install \
+  cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.14.5 \
+  --set installCRDs=true \
+  --set prometheus.enabled=false \
+  --set webhook.timeoutSeconds=4
+
+kubectl -n cert-manager get all
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    email: ov@fevlake.com
+    privateKeySecretRef:
+      name: letsencrypt-private-key
+    server: https://acme-v02.api.letsencrypt.org/directory
+    solvers:
+    - http01:
+       ingress:
+         class: nginx
+		 
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: back
+  namespace: default
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt"
+    acme.cert-manager.io/http01-ingress-class: "nginx"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: dp.130.193.57.0.nip.io
+    http:
+      paths:
+      - pathType: Prefix
+        path: /
+        backend:
+          service:
+            name: svc-internal
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - dp.130.193.57.0.nip.io
+    secretName: tls-cert
+	
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    email: ov@fevlake.com
+    privateKeySecretRef:
+      name: letsencrypt-private-key
+    server: https://acme-v02.api.letsencrypt.org/directory
+    solvers:
+    - http01:
+       ingress:
+         class: nginx
