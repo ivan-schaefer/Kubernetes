@@ -1,0 +1,163 @@
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+kubectl get deployment metrics-server -n kube-system
+
+
+
+helm  pull prometheus-community/kube-prometheus-stack --untar
+
+vim values-override.yaml
+
+alertmanager:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations: {}
+    labels: {}
+    hosts:
+       - alertmanager.158.160.162.58.nip.io
+
+    paths:
+      - /
+
+grafana:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations: {}
+    labels: {}
+    hosts:
+       - grafana.158.160.162.58.nip.io
+    paths:
+      - /
+
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations: {}
+    labels: {}
+    hosts:
+       - prom.158.160.162.58.nip.io
+    paths:
+      - /
+
+
+helm -n monitoring upgrade --install prometheus-stack -f values-override.yaml .
+kubectl get crd | grep mon
+kubectl -n monitoring get all
+
+
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm pull prometheus-community/prometheus-adapter --untar
+
+vim values-override.yaml
+
+-----
+metricsRelistInterval: 1m
+
+prometheus:
+  # Value is templated
+  url: http://prometheus-stack-kube-prom-prometheus.monitoring.svc.cluster.local
+
+replicas: 2
+
+# для теста хватит, для крупных кластеров понадобится от 1CPU 1.5 гигабайта памяти
+
+resources:
+  requests:
+     cpu: 100m
+     memory: 256Mi
+  limits:
+     cpu: 300m
+     memory: 512Mi
+----
+
+helm -n monitoring upgrade --install prometheus-adapter -f values-override.yaml .
+
+kubectl get crd | grep mon
+
+kubectl -n monitoring get all
+
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: whoami
+      labels:
+        app: whoami
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: whoami
+      template:
+        metadata:
+          labels:
+            app: whoami
+        spec:
+          containers:
+            - name: whoami
+              image: bee42/whoami:2.2.0
+              ports:
+              - containerPort: 80
+                name: web
+        
+    ---
+    apiVersion: monitoring.coreos.com/v1
+    kind: PodMonitor
+    metadata:
+      name: whoami-monitor
+      labels:
+        release: prometheus-stack
+    spec:
+      selector:
+        matchLabels:
+          app: whoami
+      podMetricsEndpoints:
+      - port: web
+
+
+
+
+kubectl port-forward whoami-7ddf56bf65-bpmpc 8080:80 --address 0.0.0.0
+
+curl localhost:8080
+
+curl localhost:8080/metrics
+
+helm install prometheus-adapter prometheus-community/prometheus-adapter -n monitoring
+kubectl get pods -n monitoring | grep prometheus-adapter
+
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+metadata:
+  name: test-hpa
+spec:
+  scaleTargetRef:
+    # point the HPA at the sample application
+    # you created above
+    apiVersion: apps/v1
+    kind: Deployment
+    name: whoami
+  # autoscale between 1 and 10 replicas
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Pods # у нас метрика в разделе поды pods/http_requests
+    pods:
+      metric:
+        name: http_requests
+      target:
+        type: Value
+        averageValue: 500m 
+		  
+kubectl apply -f autoscale-hpa.yaml
+
+kubectl port-forward svc/prometheus-stack-kube-prometheus-prometheus -n monitoring 9090
+
+kubectl top pods -n default
+
+
+kubectl get hpa -n default
