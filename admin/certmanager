@@ -63,17 +63,4 @@ spec:
     - dp.130.193.57.0.nip.io
     secretName: tls-cert
 	
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt
-spec:
-  acme:
-    email: ov@fevlake.com
-    privateKeySecretRef:
-      name: letsencrypt-private-key
-    server: https://acme-v02.api.letsencrypt.org/directory
-    solvers:
-    - http01:
-       ingress:
-         class: nginx
+\
