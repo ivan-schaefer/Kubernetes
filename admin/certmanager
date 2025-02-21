@@ -62,5 +62,3 @@ spec:
   - hosts:
     - dp.130.193.57.0.nip.io
     secretName: tls-cert
-	
-\
